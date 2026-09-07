@@ -1,5 +1,5 @@
 ---
-
+import { Sun, Moon } from "@lucide/astro";
 ---
 
 <button
@@ -7,12 +7,8 @@
   aria-label="Toggle light/dark mode"
   class="rounded-md border border-border bg-secondary p-2 text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
 >
-  <svg id="icon-sun" xmlns="http://www.w3.org/2000/svg" class="hidden size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
-  </svg>
-  <svg id="icon-moon" xmlns="http://www.w3.org/2000/svg" class="hidden size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z" />
-  </svg>
+  <Sun class="size-5" id="icon-sun"/>
+  <Moon class="hidden size-5" id="icon-moon"/>
 </button>
 
 <script>
@@ -20,17 +16,69 @@
   const iconSun = document.getElementById("icon-sun")!;
   const iconMoon = document.getElementById("icon-moon")!;
 
-  // dark = default, light = class variant
   function updateIcons(isLight: boolean) {
     iconSun.classList.toggle("hidden", isLight);
     iconMoon.classList.toggle("hidden", !isLight);
   }
 
-  updateIcons(document.documentElement.classList.contains("light"));
-
-  toggle.addEventListener("click", () => {
+  function switchTheme() {
     const isLight = document.documentElement.classList.toggle("light");
     localStorage.setItem("theme", isLight ? "light" : "dark");
     updateIcons(isLight);
+  }
+
+  updateIcons(document.documentElement.classList.contains("light"));
+
+  toggle.addEventListener("click", (event: MouseEvent) => {
+    if (!document.startViewTransition) {
+      switchTheme();
+      return;
+    }
+
+    // La snapshot est en pixels physiques : on convertit les coordonnées CSS → physiques
+    const dpr = window.devicePixelRatio || 1;
+    const x = event.clientX * dpr;
+    const y = event.clientY * dpr;
+    const { clientWidth, clientHeight } = document.documentElement;
+    const endRadius = Math.hypot(
+      Math.max(x, clientWidth * dpr - x),
+      Math.max(y, clientHeight * dpr - y)
+    );
+
+    // Les CSS custom properties n'héritent pas dans les pseudo-éléments
+    // de view transition — on injecte les @keyframes avec les valeurs en dur
+    const style = document.createElement("style");
+    style.textContent = `
+      @keyframes _vt-reveal {
+        from { clip-path: circle(0px at ${x}px ${y}px); }
+        to   { clip-path: circle(${endRadius}px at ${x}px ${y}px); }
+      }
+      ::view-transition-new(root) {
+        animation: _vt-reveal 600ms cubic-bezier(0.76, 0.32, 0.29, 0.99) forwards !important;
+      }
+    `;
+    document.head.appendChild(style);
+
+    const transition = document.startViewTransition(() => {
+      switchTheme();
+    });
+
+    transition.finished.then(() => style.remove());
   });
 </script>
+
+<style is:global>
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+  }
+
+  ::view-transition-old(root) {
+    z-index: 1;
+  }
+
+  ::view-transition-new(root) {
+    z-index: 9999;
+  }
+</style>
